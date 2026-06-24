@@ -236,8 +236,17 @@
                                 @dragover.prevent
                                 @drop.prevent="onDrop"
                             >
+                                <!-- Procesando: comprimiendo/redimensionando en el cliente -->
+                                <div v-if="procesandoImagen" class="py-6 flex flex-col items-center gap-3">
+                                    <svg class="animate-spin h-8 w-8 text-yamaha-blue" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                                    </svg>
+                                    <p class="text-sm font-estricta font-semibold text-yamaha-blue">Procesando imagen…</p>
+                                </div>
+
                                 <!-- Preview de imagen seleccionada -->
-                                <div v-if="previewUrl" class="space-y-3">
+                                <div v-else-if="previewUrl" class="space-y-3">
                                     <img :src="previewUrl" alt="Vista previa VIN" class="max-h-40 mx-auto rounded-lg object-contain shadow"/>
                                     <p class="text-sm font-medium text-yamaha-blue truncate px-2 font-estricta">{{ form.vin_imagen?.name }}</p>
                                     <div class="flex flex-col sm:flex-row gap-2 justify-center">
@@ -357,16 +366,16 @@
                         <!-- Botón -->
                         <button
                             type="submit"
-                            :disabled="form.processing"
+                            :disabled="form.processing || procesandoImagen"
                             class="w-full bg-yamaha-red hover:bg-yamaha-red-dark disabled:opacity-60 disabled:cursor-not-allowed
                                    text-white font-bold py-3 px-6 rounded-lg uppercase tracking-wider text-md
                                    transition-colors flex items-center justify-center gap-2 mt-2 font-estricta"
                         >
-                            <svg v-if="form.processing" class="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                            <svg v-if="form.processing || procesandoImagen" class="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
                             </svg>
-                            {{ form.processing ? 'Enviando...' : 'Registrarme' }}
+                            {{ procesandoImagen ? 'Procesando imagen...' : (form.processing ? 'Enviando...' : 'Registrarme') }}
                         </button>
 
                         <!-- Link a VIN1 -->
@@ -452,6 +461,7 @@
 <script setup>
 import { computed, ref, reactive, nextTick, onMounted, onUnmounted } from 'vue';
 import { useForm, usePage, Link, Head } from '@inertiajs/vue3';
+import { compressImage } from '@/Composables/useImageCompression';
 
 defineProps({
     modelos: Array,
@@ -461,6 +471,9 @@ const page        = usePage();
 const fileInput   = ref(null);
 const cameraInput = ref(null);
 const previewUrl  = ref(null);
+
+// Estado de "procesando" mientras se comprime/redimensiona la imagen en el cliente.
+const procesandoImagen = ref(false);
 
 // Detección de dispositivo móvil/tablet iOS-Android (en esos ya funciona capture="environment")
 const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -507,8 +520,9 @@ const capturarFoto = () => {
     canvas.getContext('2d').drawImage(video, 0, 0);
     canvas.toBlob(blob => {
         const file = new File([blob], `vin-webcam-${Date.now()}.jpg`, { type: 'image/jpeg' });
-        setFile(file);
         cerrarCamara();
+        // Pasa por la misma compresión/redimensionado que galería y archivo.
+        setFile(file);
     }, 'image/jpeg', 0.92);
 };
 
@@ -560,11 +574,22 @@ function onLogoError(e) {
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp'];
 const MAX_SIZE_MB   = 5;
 
-const setFile = (file) => {
+const setFile = async (file) => {
     if (!file) return;
-    form.vin_imagen  = file;
-    previewUrl.value = URL.createObjectURL(file);
     delete localErrors.vin_imagen;
+
+    // Comprimir/redimensionar EN EL CLIENTE antes de asignar al formulario.
+    // compressImage nunca lanza: ante cualquier error devuelve el archivo original,
+    // de modo que un fallo de compresión jamás bloquea el registro.
+    procesandoImagen.value = true;
+    try {
+        const optimizado = await compressImage(file);
+        form.vin_imagen = optimizado;
+        if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
+        previewUrl.value = URL.createObjectURL(optimizado);
+    } finally {
+        procesandoImagen.value = false;
+    }
 };
 
 const onFileChange = (e) => setFile(e.target.files[0]);
@@ -615,6 +640,8 @@ const validate = () => {
 };
 
 const submit = () => {
+    // No enviar mientras la imagen aún se está comprimiendo.
+    if (procesandoImagen.value) return;
     if (!validate()) return;
     form.post(route('vin.store'), {
         forceFormData: true,
