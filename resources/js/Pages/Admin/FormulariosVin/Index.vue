@@ -4,7 +4,7 @@
 
         <!-- ── Barra de filtros ───────────────────────────────────────────── -->
         <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-8 gap-3">
 
                 <!-- Filtro por tipo de formulario -->
                 <select v-model="filtros.tipo"
@@ -13,6 +13,10 @@
                     <option value="VIN1">VIN-1 (Texto)</option>
                     <option value="VIN2">VIN-2 (Foto)</option>
                 </select>
+
+                <!-- Búsqueda por documento (tipo o número) -->
+                <input v-model="filtros.documento" type="text" placeholder="Buscar por documento…"
+                    class="rounded-lg border-gray-300 text-sm focus:ring-1 focus:ring-yamaha-blue focus:border-yamaha-blue"/>
 
                 <!-- Búsqueda por nombre del cliente -->
                 <input v-model="filtros.nombres" type="text" placeholder="Buscar por nombre…"
@@ -33,6 +37,14 @@
                 <!-- Búsqueda por código VIN -->
                 <input v-model="filtros.vin" type="text" placeholder="Buscar código VIN…"
                     class="rounded-lg border-gray-300 text-sm focus:ring-1 focus:ring-yamaha-blue focus:border-yamaha-blue"/>
+
+                <!-- Filtro por autorización de promociones -->
+                <select v-model="filtros.promociones"
+                    class="rounded-lg border-gray-300 text-sm focus:ring-1 focus:ring-yamaha-blue focus:border-yamaha-blue">
+                    <option value="">Promos: todos</option>
+                    <option value="1">Acepta promos</option>
+                    <option value="0">No acepta promos</option>
+                </select>
 
                 <!-- Acciones: Limpiar filtros + Exportar Excel -->
                 <div class="flex gap-2">
@@ -57,9 +69,11 @@
                     <thead class="bg-yamaha-blue text-white">
                         <tr>
                             <th class="px-4 py-3 text-left font-semibold">#</th>
+                            <th class="px-4 py-3 text-left font-semibold">Documento</th>
                             <th class="px-4 py-3 text-left font-semibold">Cliente</th>
                             <th class="px-4 py-3 text-left font-semibold">Celular</th>
                             <th class="px-4 py-3 text-left font-semibold hidden md:table-cell">Correo</th>
+                            <th class="px-4 py-3 text-center font-semibold hidden lg:table-cell">Promos</th>
                             <th class="px-4 py-3 text-left font-semibold">Modelo</th>
                             <th class="px-4 py-3 text-left font-semibold">Tipo</th>
                             <th class="px-4 py-3 text-left font-semibold">Código VIN</th>
@@ -71,7 +85,7 @@
 
                         <!-- Mensaje cuando no hay resultados -->
                         <tr v-if="!registros.data.length">
-                            <td colspan="9" class="px-4 py-12 text-center text-gray-400">
+                            <td colspan="11" class="px-4 py-12 text-center text-gray-400">
                                 No se encontraron registros con los filtros aplicados.
                             </td>
                         </tr>
@@ -83,6 +97,15 @@
                                 {{ (registros.meta.current_page - 1) * registros.meta.per_page + i + 1 }}
                             </td>
 
+                            <!-- Documento de identidad -->
+                            <td class="px-4 py-3 text-gray-600 whitespace-nowrap">
+                                <template v-if="r.cliente.numero_documento">
+                                    <span class="block text-xs text-gray-400">{{ r.cliente.tipo_documento }}</span>
+                                    <span class="font-mono">{{ r.cliente.numero_documento }}</span>
+                                </template>
+                                <span v-else class="text-gray-400">—</span>
+                            </td>
+
                             <td class="px-4 py-3 font-medium text-gray-900 max-w-[140px] truncate">
                                 {{ r.cliente.nombres_apellidos }}
                             </td>
@@ -91,6 +114,13 @@
 
                             <td class="px-4 py-3 text-gray-600 hidden md:table-cell max-w-[160px] truncate">
                                 {{ r.cliente.correo || '—' }}
+                            </td>
+
+                            <!-- Autorización de fines promocionales -->
+                            <td class="px-4 py-3 text-center hidden lg:table-cell">
+                                <AppBadge :variant="r.cliente.acepta_promociones ? 'green' : 'gray'">
+                                    {{ r.cliente.acepta_promociones ? 'Sí' : 'No' }}
+                                </AppBadge>
                             </td>
 
                             <td class="px-4 py-3 text-gray-600">{{ r.modelo_moto.nombre }}</td>
@@ -227,11 +257,13 @@ const imagenModal = ref(null);
 
 // Estado reactivo de los filtros (inicializado con los valores del servidor)
 const filtros = reactive({
-    tipo:    props.filtros.tipo    || '',
-    nombres: props.filtros.nombres || '',
+    tipo:      props.filtros.tipo      || '',
+    documento: props.filtros.documento || '',
+    nombres:   props.filtros.nombres   || '',
     celular: props.filtros.celular || '',
-    modelo:  props.filtros.modelo  || '',
-    vin:     props.filtros.vin     || '',
+    modelo:      props.filtros.modelo      || '',
+    vin:         props.filtros.vin         || '',
+    promociones: props.filtros.promociones || '',
 });
 
 // Filas por página (preferencia de UI, no se resetea al limpiar filtros)

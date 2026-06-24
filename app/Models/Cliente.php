@@ -9,7 +9,11 @@ class Cliente extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['nombres_apellidos', 'celular', 'correo'];
+    protected $fillable = ['tipo_documento', 'numero_documento', 'nombres_apellidos', 'celular', 'correo', 'acepta_promociones'];
+
+    protected $casts = [
+        'acepta_promociones' => 'boolean',
+    ];
 
     public function motocicletas()
     {

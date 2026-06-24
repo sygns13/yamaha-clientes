@@ -12,6 +12,7 @@ use Inertia\Inertia;
 // ── Rutas públicas VIN (sin autenticación) ─────────────────────────────────
 Route::get('/vin1',  [VinController::class, 'vin1'])->name('vin1');
 Route::post('/vin1', [VinController::class, 'storeVin1'])->middleware('throttle:10,1')->name('vin1.store');
+Route::get('/clientes/buscar', [VinController::class, 'buscarCliente'])->middleware('throttle:30,1')->name('clientes.buscar');
 Route::get('/vin',  [VinController::class, 'vin2'])->name('vin');
 Route::post('/vin', [VinController::class, 'storeVin2'])->middleware('throttle:10,1')->name('vin.store');
 

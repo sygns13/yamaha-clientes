@@ -48,6 +48,50 @@
                             Por favor corrige los errores indicados.
                         </div>
 
+                        <!-- Tipo de Documento de Identidad -->
+                        <div>
+                            <label class="block text-md font-semibold text-gray-700 mb-1 font-estricta">
+                                Tipo de Documento de Identidad <span class="text-yamaha-red">*</span>
+                            </label>
+                            <select
+                                v-model="form.tipo_documento"
+                                class="w-full rounded-lg border-gray-300 shadow-sm text-md font-estricta
+                                       focus:border-yamaha-blue focus:ring-1 focus:ring-yamaha-blue
+                                       transition-colors"
+                                :class="{'border-red-400 bg-red-50': form.errors.tipo_documento || localErrors.tipo_documento}"
+                            >
+                                <option value="">— Seleccione un tipo —</option>
+                                <option v-for="t in tiposDocumento" :key="t" :value="t">{{ t }}</option>
+                            </select>
+                            <p v-if="form.errors.tipo_documento || localErrors.tipo_documento" class="mt-1 text-xs text-red-600">
+                                {{ form.errors.tipo_documento || localErrors.tipo_documento }}
+                            </p>
+                        </div>
+
+                        <!-- Número de Documento de Identidad -->
+                        <div>
+                            <label class="block text-md font-semibold text-gray-700 mb-1 font-estricta">
+                                Número de Documento de Identidad <span class="text-yamaha-red">*</span>
+                            </label>
+                            <input
+                                v-model="form.numero_documento"
+                                type="text"
+                                :inputmode="soloDigitos ? 'numeric' : 'text'"
+                                :maxlength="numeroDocumentoMaxlength"
+                                placeholder="Ingrese el número de documento"
+                                class="w-full rounded-lg border-gray-300 shadow-sm text-md font-estricta
+                                       focus:border-yamaha-blue focus:ring-1 focus:ring-yamaha-blue
+                                       transition-colors"
+                                :class="{'border-red-400 bg-red-50': form.errors.numero_documento || localErrors.numero_documento}"
+                            />
+                            <p v-if="form.errors.numero_documento || localErrors.numero_documento" class="mt-1 text-xs text-red-600">
+                                {{ form.errors.numero_documento || localErrors.numero_documento }}
+                            </p>
+                            <p v-else-if="clienteEncontrado" class="mt-1 text-xs text-green-600 font-estricta">
+                                Cliente encontrado: se cargaron sus datos. Puedes editarlos si es necesario.
+                            </p>
+                        </div>
+
                         <!-- Nombres y Apellidos -->
                         <div>
                             <label class="block text-md font-semibold text-gray-700 mb-1 font-estricta">
@@ -166,6 +210,51 @@
                             </p>
                         </div>
 
+                        <!-- Consentimientos -->
+                        <div class="space-y-2">
+
+                            <!-- Política de Privacidad (obligatorio) -->
+                            <div class="rounded-lg border font-estricta text-sm leading-snug px-4 py-3 transition-colors"
+                                 :class="localErrors.acepta_privacidad ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50'">
+                                <label class="flex items-start gap-3 cursor-pointer select-none">
+                                    <input
+                                        v-model="form.acepta_privacidad"
+                                        type="checkbox"
+                                        class="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-gray-300 text-yamaha-blue
+                                               focus:ring-yamaha-blue focus:ring-1 cursor-pointer"
+                                    />
+                                    <span class="text-gray-700">
+                                        He leído y acepto la
+                                        <a href="https://www.yamaha-motor.com.pe/politicas-privacidad"
+                                           target="_blank" rel="noopener noreferrer"
+                                           class="underline text-yamaha-blue hover:text-yamaha-blue-dark font-semibold">
+                                            Política de Privacidad</a>
+                                        <span class="text-yamaha-red">*</span>
+                                    </span>
+                                </label>
+                                <p v-if="localErrors.acepta_privacidad" class="mt-2 text-xs text-red-600">
+                                    {{ localErrors.acepta_privacidad }}
+                                </p>
+                            </div>
+
+                            <!-- Fines promocionales (opcional) -->
+                            <div class="rounded-lg border border-gray-200 bg-gray-50 font-estricta text-sm leading-snug px-4 py-3">
+                                <label class="flex items-start gap-3 cursor-pointer select-none">
+                                    <input
+                                        v-model="form.acepta_promociones"
+                                        type="checkbox"
+                                        class="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-gray-300 text-yamaha-blue
+                                               focus:ring-yamaha-blue focus:ring-1 cursor-pointer"
+                                    />
+                                    <span class="text-gray-700">
+                                        Autorizo el tratamiento de mis datos personales para fines promocionales, lo que incluye
+                                        el envío de información comercial, novedades, beneficios y la participación en futuras
+                                        campañas promocionales y sorteos organizados por Yamaha Motor del Perú.
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+
                         <!-- Botón -->
                         <button
                             type="submit"
@@ -204,7 +293,7 @@
 </template>
 
 <script setup>
-import { computed, reactive } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { useForm, usePage, Link, Head } from '@inertiajs/vue3';
 
 defineProps({
@@ -214,16 +303,89 @@ defineProps({
 const page = usePage();
 const showSuccess = computed(() => !!page.props.flash?.success);
 
+const tiposDocumento = [
+    'DNI',
+    'Carnet de extranjería',
+    'RUC',
+    'Pasaporte',
+    'Otros tipos de documento',
+];
+
 const form = useForm({
+    tipo_documento:    '',
+    numero_documento:  '',
     nombres_apellidos: '',
     celular:           '',
     correo:            '',
     modelo_moto_id:    '',
     modelo_moto_otro:  '',
     vin_descripcion:   '',
+    acepta_privacidad: false,
+    acepta_promociones: false,
 });
 
 const esOtroModelo = computed(() => form.modelo_moto_id === 'otros');
+
+// Límite de caracteres del número de documento según el tipo seleccionado.
+const numeroDocumentoMaxlength = computed(() => {
+    switch (form.tipo_documento) {
+        case 'DNI': return 8;
+        case 'RUC': return 11;
+        default:    return 20; // Carnet de extranjería, Pasaporte, Otros tipos de documento
+    }
+});
+
+// DNI y RUC solo admiten dígitos.
+const soloDigitos = computed(() => form.tipo_documento === 'DNI' || form.tipo_documento === 'RUC');
+
+// Aviso visual cuando el cliente ya existía y se precargaron sus datos.
+const clienteEncontrado = ref(false);
+
+// Sanea el número de documento: quita no-dígitos para DNI/RUC y recorta al máximo.
+watch(() => [form.tipo_documento, form.numero_documento], () => {
+    let v = form.numero_documento;
+    if (soloDigitos.value) v = v.replace(/\D/g, '');
+    v = v.slice(0, numeroDocumentoMaxlength.value);
+    if (v !== form.numero_documento) form.numero_documento = v;
+});
+
+/**
+ * Búsqueda del cliente por documento (con debounce). Si existe, precarga sus
+ * datos en el formulario permitiendo editarlos antes de registrar.
+ */
+let buscarTimer;
+watch(() => [form.tipo_documento, form.numero_documento], () => {
+    clearTimeout(buscarTimer);
+    clienteEncontrado.value = false;
+
+    const tipo = form.tipo_documento;
+    const numero = form.numero_documento.trim();
+    if (!tipo || !numero) return;
+
+    // No consultar hasta tener una longitud razonable / exacta según el tipo.
+    if (tipo === 'DNI' && numero.length !== 8) return;
+    if (tipo === 'RUC' && numero.length !== 11) return;
+    if (numero.length < 3) return;
+
+    buscarTimer = setTimeout(async () => {
+        try {
+            const { data } = await window.axios.get(route('clientes.buscar'), {
+                params: { tipo_documento: tipo, numero_documento: numero },
+            });
+            // Ignora respuestas obsoletas si el usuario siguió escribiendo.
+            if (tipo !== form.tipo_documento || numero !== form.numero_documento.trim()) return;
+
+            if (data.encontrado && data.cliente) {
+                form.nombres_apellidos = data.cliente.nombres_apellidos ?? '';
+                form.celular           = data.cliente.celular ?? '';
+                form.correo            = data.cliente.correo ?? '';
+                clienteEncontrado.value = true;
+            }
+        } catch {
+            // Silencioso: la búsqueda es una ayuda, no debe bloquear el registro.
+        }
+    }, 500);
+});
 
 const localErrors = reactive({});
 function onLogoError(e) {
@@ -231,6 +393,20 @@ function onLogoError(e) {
 }
 const validate = () => {
     Object.keys(localErrors).forEach(k => delete localErrors[k]);
+
+    if (!form.tipo_documento)
+        localErrors.tipo_documento = 'Selecciona el tipo de documento.';
+
+    const numDoc = form.numero_documento.trim();
+    if (!numDoc) {
+        localErrors.numero_documento = 'El número de documento es obligatorio.';
+    } else if (form.tipo_documento === 'DNI' && !/^\d{8}$/.test(numDoc)) {
+        localErrors.numero_documento = 'El DNI debe tener exactamente 8 dígitos numéricos.';
+    } else if (form.tipo_documento === 'RUC' && !/^\d{11}$/.test(numDoc)) {
+        localErrors.numero_documento = 'El RUC debe tener exactamente 11 dígitos numéricos.';
+    } else if (numDoc.length > 20) {
+        localErrors.numero_documento = 'El número de documento no puede superar los 20 caracteres.';
+    }
 
     if (!form.nombres_apellidos.trim())
         localErrors.nombres_apellidos = 'El nombre es obligatorio.';
@@ -256,6 +432,9 @@ const validate = () => {
         localErrors.vin_descripcion = 'El código VIN es obligatorio.';
     else if (form.vin_descripcion.trim().length < 5)
         localErrors.vin_descripcion = 'El código VIN parece demasiado corto.';
+
+    if (!form.acepta_privacidad)
+        localErrors.acepta_privacidad = 'Debes aceptar la Política de Privacidad para continuar.';
 
     return Object.keys(localErrors).length === 0;
 };

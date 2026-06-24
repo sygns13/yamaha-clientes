@@ -8,6 +8,7 @@ use App\Http\Resources\ModeloMotoResource;
 use App\Http\Resources\MotocicletaResource;
 use App\Models\ModeloMoto;
 use App\Models\Motocicleta;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
@@ -24,7 +25,7 @@ class FormulariosVinController extends Controller
     public function index(Request $request): Response
     {
         // Extraer solo los filtros permitidos
-        $filtros = $request->only(['tipo', 'nombres', 'celular', 'modelo', 'vin']);
+        $filtros = $request->only(['tipo', 'documento', 'nombres', 'celular', 'modelo', 'vin', 'promociones']);
 
         // Cantidad de filas por página (lista blanca de valores permitidos)
         $perPage = in_array((int) $request->input('per_page', 15), [10, 15, 25, 50, 100])
@@ -33,7 +34,12 @@ class FormulariosVinController extends Controller
 
         $registros = Motocicleta::with(['cliente', 'modeloMoto'])
             // Filtro por tipo de formulario (VIN1 / VIN2)
-            ->when($filtros['tipo']    ?? null, fn ($q, $v) => $q->where('tipo_formulario', $v))
+            ->when($filtros['tipo'] ?? null, fn ($q, $v) => $q->where('tipo_formulario', $v))
+            // Filtro por documento del cliente (tipo o número, búsqueda parcial)
+            ->when($filtros['documento'] ?? null, fn ($q, $v) => $q->whereHas('cliente',
+                fn ($q2) => $q2->where('numero_documento', 'like', "%{$v}%")
+                    ->orWhere('tipo_documento', 'like', "%{$v}%")
+            ))
             // Filtro por nombre del cliente (búsqueda parcial)
             ->when($filtros['nombres'] ?? null, fn ($q, $v) => $q->whereHas('cliente',
                 fn ($q2) => $q2->where('nombres_apellidos', 'like', "%{$v}%")
@@ -49,7 +55,12 @@ class FormulariosVinController extends Controller
                     : $q->where('modelo_moto_id', $v);
             })
             // Filtro por código VIN (búsqueda parcial)
-            ->when($filtros['vin']     ?? null, fn ($q, $v) => $q->where('vin_descripcion', 'like', "%{$v}%"))
+            ->when($filtros['vin'] ?? null, fn ($q, $v) => $q->where('vin_descripcion', 'like', "%{$v}%"))
+            // Filtro por autorización de promociones ('1' = Sí, '0' = No; '' = todos).
+            // Condición explícita porque '0' es falsy y no dispararía el helper when().
+            ->when(($filtros['promociones'] ?? '') !== '', fn ($q) => $q->whereHas('cliente',
+                fn ($q2) => $q2->where('acepta_promociones', (int) $filtros['promociones'])
+            ))
             ->latest()
             ->paginate($perPage)
             ->withQueryString();  // Preserva los filtros en los links de paginación
@@ -58,16 +69,16 @@ class FormulariosVinController extends Controller
             // Resource::collection sobre paginator conserva links y meta de paginación
             'registros' => MotocicletaResource::collection($registros),
             // Solo modelos activos para el filtro de la tabla
-            'modelos'   => ModeloMotoResource::collection(ModeloMoto::orderBy('nombre')->get()),
-            'filtros'   => $filtros,
-            'perPage'   => $perPage,
+            'modelos' => ModeloMotoResource::collection(ModeloMoto::orderBy('nombre')->get()),
+            'filtros' => $filtros,
+            'perPage' => $perPage,
         ]);
     }
 
     /**
      * Elimina un registro y su imagen asociada del storage.
      */
-    public function destroy(Motocicleta $motocicleta): \Illuminate\Http\RedirectResponse
+    public function destroy(Motocicleta $motocicleta): RedirectResponse
     {
         // Eliminar imagen del disco público si existe
         if ($motocicleta->vin_imagen) {
@@ -84,8 +95,8 @@ class FormulariosVinController extends Controller
      */
     public function exportExcel(Request $request): BinaryFileResponse
     {
-        $filtros  = $request->only(['tipo', 'nombres', 'celular', 'modelo', 'vin']);
-        $filename = 'formularios-vin-' . now()->format('Ymd-His') . '.xlsx';
+        $filtros = $request->only(['tipo', 'documento', 'nombres', 'celular', 'modelo', 'vin', 'promociones']);
+        $filename = 'formularios-vin-'.now()->format('Ymd-His').'.xlsx';
 
         return Excel::download(new FormulariosVinExport($filtros), $filename);
     }

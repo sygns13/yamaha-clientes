@@ -14,9 +14,10 @@ use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class FormulariosVinExport implements FromQuery, WithHeadings, WithMapping, WithStyles, ShouldAutoSize, WithEvents
+class FormulariosVinExport implements FromQuery, ShouldAutoSize, WithEvents, WithHeadings, WithMapping, WithStyles
 {
     private int $currentRow = 2;
+
     private array $vinImagenes = [];
 
     public function __construct(private array $filtros = []) {}
@@ -25,6 +26,7 @@ class FormulariosVinExport implements FromQuery, WithHeadings, WithMapping, With
     {
         return Motocicleta::with(['cliente', 'modeloMoto'])
             ->when($this->filtros['tipo'] ?? null, fn ($q, $v) => $q->where('tipo_formulario', $v))
+            ->when($this->filtros['documento'] ?? null, fn ($q, $v) => $q->whereHas('cliente', fn ($q2) => $q2->where('numero_documento', 'like', "%$v%")->orWhere('tipo_documento', 'like', "%$v%")))
             ->when($this->filtros['nombres'] ?? null, fn ($q, $v) => $q->whereHas('cliente', fn ($q2) => $q2->where('nombres_apellidos', 'like', "%$v%")))
             ->when($this->filtros['celular'] ?? null, fn ($q, $v) => $q->whereHas('cliente', fn ($q2) => $q2->where('celular', 'like', "%$v%")))
             ->when($this->filtros['modelo'] ?? null, function ($q, $v) {
@@ -33,12 +35,13 @@ class FormulariosVinExport implements FromQuery, WithHeadings, WithMapping, With
                     : $q->where('modelo_moto_id', $v);
             })
             ->when($this->filtros['vin'] ?? null, fn ($q, $v) => $q->where('vin_descripcion', 'like', "%$v%"))
+            ->when(($this->filtros['promociones'] ?? '') !== '', fn ($q) => $q->whereHas('cliente', fn ($q2) => $q2->where('acepta_promociones', (int) $this->filtros['promociones'])))
             ->latest();
     }
 
     public function headings(): array
     {
-        return ['Nombres y Apellidos', 'Celular', 'Correo', 'Modelo de Moto', 'Tipo VIN', 'Código / Imagen VIN', 'Fecha de Registro'];
+        return ['Tipo Documento', 'N° Documento', 'Nombres y Apellidos', 'Celular', 'Correo', 'Acepta Promociones', 'Modelo de Moto', 'Tipo VIN', 'Código / Imagen VIN', 'Fecha de Registro'];
     }
 
     public function map($m): array
@@ -53,10 +56,13 @@ class FormulariosVinExport implements FromQuery, WithHeadings, WithMapping, With
         $this->currentRow++;
 
         return [
+            $m->cliente->tipo_documento ?? '-',
+            $m->cliente->numero_documento ?? '-',
             $m->cliente->nombres_apellidos,
             $m->cliente->celular,
             $m->cliente->correo ?? '-',
-            $m->modeloMoto ? $m->modeloMoto->nombre : 'OTROS: ' . $m->modelo_moto_otro,
+            $m->cliente->acepta_promociones ? 'Sí' : 'No',
+            $m->modeloMoto ? $m->modeloMoto->nombre : 'OTROS: '.$m->modelo_moto_otro,
             $m->tipo_formulario,
             // VIN-1: texto del código | VIN-2: vacío, la imagen se inserta vía AfterSheet
             $m->tipo_formulario === 'VIN1' ? $m->vin_descripcion : '',
@@ -68,7 +74,7 @@ class FormulariosVinExport implements FromQuery, WithHeadings, WithMapping, With
     {
         return [
             1 => ['font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
-                  'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => '003087']]],
+                'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => '003087']]],
         ];
     }
 
@@ -78,16 +84,16 @@ class FormulariosVinExport implements FromQuery, WithHeadings, WithMapping, With
             AfterSheet::class => function (AfterSheet $event) {
                 $sheet = $event->sheet->getDelegate();
 
-                // Columna F: ancho fijo para alojar las imágenes (ShouldAutoSize la dejaría muy angosta)
-                $sheet->getColumnDimension('F')->setAutoSize(false)->setWidth(22);
+                // Columna I: ancho fijo para alojar las imágenes (ShouldAutoSize la dejaría muy angosta)
+                $sheet->getColumnDimension('I')->setAutoSize(false)->setWidth(22);
 
                 foreach ($this->vinImagenes as $row => $path) {
                     try {
-                        $drawing = new Drawing();
+                        $drawing = new Drawing;
                         $drawing->setName('VIN');
                         $drawing->setDescription('Imagen VIN');
                         $drawing->setPath($path);
-                        $drawing->setCoordinates('F' . $row);
+                        $drawing->setCoordinates('I'.$row);
                         $drawing->setOffsetX(2);
                         $drawing->setOffsetY(2);
                         $drawing->setResizeProportional(true);
