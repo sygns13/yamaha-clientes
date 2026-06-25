@@ -50,4 +50,10 @@ RUN mkdir -p \
     storage/framework/sessions \
     storage/framework/views \
     storage/logs \
+    storage/app/public \
     bootstrap/cache
+
+# Symlink public/storage -> storage/app/public (para servir uploads por la web).
+# Se usa ln -snf en vez de "artisan storage:link" para que sea deterministico
+# y no dependa de que el framework arranque en build.
+RUN ln -snf ../storage/app/public public/storage
